@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>词语小鸟游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f9ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .game-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-item {
+            font-size: 20px;
+        }
+        .message {
+            text-align: center;
+            margin: 10px 0;
+            min-height: 24px;
+            font-size: 18px;
+        }
+        .success {
+            color: #22c55e;
+        }
+        .error {
+            color: #ef4444;
+        }
+        .canvas-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .instructions {
+            text-align: center;
+            margin-top: 20px;
+            color: #4b5563;
+        }
+        .game-over {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .game-over-content {
+            background: white;
+            padding: 32px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .restart-button {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 16px;
+        }
+        .restart-button:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="status-bar">
+            <div class="status-item">❤️ <span id="lives">x 3</span></div>
+            <div class="status-item">🏅 <span id="score">0</span></div>
+            <div class="status-item">🎯 <span id="level">关卡 1</span></div>
+        </div>
+        
+        <div id="message" class="message"></div>
+        
+        <div class="canvas-container">
+            <canvas id="gameCanvas" width="800" height="500"></canvas>
+        </div>
+        
+        <div class="instructions">
+            <p>点击目标位置，小鸟会自动飞过去</p>
+            <p>击中动词得分，击中名词失去生命</p>
+            <p>找出所有动词进入下一关</p>
+        </div>
+    </div>
+
+    <script>
+        const BIRD_SIZE = 30;
+        const WORD_WIDTH = 80;
+        const WORD_HEIGHT = 30;
+        const SPEED = 10;
+
+        const WORDS = {
+            verbs: ['membaca', 'membuang', 'mandi', 'mencuci', 'menulis', 'berehat', 'makan', 'menyimpan'],
+            nouns: ['tong sampah', 'meja', 'buku', 'jururawat', 'doktor', 'sekolah', 'hospital']
+        };
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.bird = { x: 50, y: 400 };
+                this.targets = [];
+                this.isMoving = false;
+                this.targetPoint = null;
+                this.lives = 3;
+                this.score = 0;
+                this.level = 1;
+                this.gameOver = false;
+
+                this.canvas.addEventListener('click', (e) => this.handleClick(e));
+                this.initTargets();
+                this.gameLoop();
+            }
+
+            shuffle(array) {
+                const arr = [...array];
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                return arr;
+            }
+
+            getRandomPositions() {
+                const layouts = [
+                    [
+                        { x: 250, y: 150 },
+                        { x: 250, y: 250 },
+                        { x: 250, y: 350 }
+                    ],
+                    [
+                        { x: 400, y: 150 },
+                        { x: 400, y: 250 },
+                        { x: 400, y: 350 }
+                    ],
+                    [
+                        { x: 550, y: 150 },
+                        { x: 550, y: 250 },
+                        { x: 550, y: 350 }
+                    ],
+                    [
+                        { x: 250, y: 150 },
+                        { x: 400, y: 250 },
+                        { x: 550, y: 350 }
+                    ]
+                ];
+                return this.shuffle(layouts[Math.floor(Math.random() * layouts.length)]);
+            }
+
+            initTargets() {
+                const positions = this.getRandomPositions();
+                const verbWord = WORDS.verbs[Math.floor(Math.random() * WORDS.verbs.length)];
+                const nounWords = this.shuffle(WORDS.nouns).slice(0, 2);
+                
+                const words = this.shuffle([
+                    { word: verbWord, type: 'verb' },
+                    { word: nounWords[0], type: 'noun' },
+                    { word: nounWords[1], type: 'noun' }
+                ]);
+
+                this.targets = words.map((word, i) => ({
+                    ...positions[i],
+                    word: word.word,
+                    type: word.type,
+                    isHit: false
+                }));
+            }
+
+            handleClick(e) {
+                if (this.isMoving || this.gameOver) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                this.targetPoint = { x, y };
+                this.isMoving = true;
+            }
+
+            checkCollision(birdX, birdY, target) {
+                return (
+                    birdX + BIRD_SIZE > target.x &&
+                    birdX < target.x + WORD_WIDTH &&
+                    birdY + BIRD_SIZE > target.y &&
+                    birdY < target.y + WORD_HEIGHT
+                );
+            }
+
+            moveBird() {
+                if (!this.isMoving || !this.targetPoint) return;
+
+                const dx = this.targetPoint.x - this.bird.x;
+                const dy = this.targetPoint.y - this.bird.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < SPEED) {
+                    this.isMoving = false;
+                    this.targetPoint = null;
+                    setTimeout(() => {
+                        this.bird = { x: 50, y: 400 };
+                    }, 500);
+                    return;
+                }
+
+                const directionX = dx / distance;
+                const directionY = dy / distance;
+                
+                this.bird.x += directionX * SPEED;
+                this.bird.y += directionY * SPEED;
+
+                // 检查碰撞
+                this.targets.forEach(target => {
+                    if (!target.isHit && this.checkCollision(this.bird.x, this.bird.y, target)) {
+                        target.isHit = true;
+                        
+                        if (target.type === 'verb') {
+                            this.score += 10;
+                            this.showMessage('太棒了！击中动词 +10分', 'success');
+                        } else {
+                            this.lives--;
+                            this.showMessage('哎呀！那是名词，失去一条生命', 'error');
+                            if (this.lives <= 0) {
+                                this.gameOver = true;
+                                this.showGameOver();
+                            }
+                        }
+
+                        // 重置小鸟位置
+                        setTimeout(() => {
+                            this.isMoving = false;
+                            this.targetPoint = null;
+                            this.bird = { x: 50, y: 400 };
+
+                            // 检查是否找到所有动词
+                            if (this.targets.filter(t => t.type === 'verb').every(t => t.isHit)) {
+                                this.level++;
+                                this.showMessage('恭喜通过本关！', 'success');
+                                setTimeout(() => {
+                                    this.initTargets();
+                                }, 1000);
+                            }
+                        }, 500);
+                    }
+                });
+            }
+
+            showMessage(text, type) {
+                const messageEl = document.getElementById('message');
+                messageEl.textContent = text;
+                messageEl.className = `message ${type}`;
+                setTimeout(() => {
+                    messageEl.textContent = '';
+                    messageEl.className = 'message';
+                }, 1500);
+            }
+
+            showGameOver() {
+                const gameOver = document.createElement('div');
+                gameOver.className = 'game-over';
+                gameOver.innerHTML = `
+                    <div class="game-over-content">
+                        <h2>游戏结束</h2>
+                        <p>得分: ${this.score}</p>
+                        <p>通过关卡: ${this.level - 1}</p>
+                        <button class="restart-button" onclick="location.reload()">重新开始</button>
+                    </div>
+                `;
+                document.body.appendChild(gameOver);
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // 绘制背景
+                this.ctx.fillStyle = '#87CEEB';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // 绘制地面
+                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillRect(0, 450, this.canvas.width, 50);
+
+                // 绘制弹弓底座
+                this.ctx.fillStyle = '#4A2F1D';
+                this.ctx.fillRect(40, 400, 20, 50);
+
+                // 绘制目标词语
+                this.targets.forEach(target => {
+                    if (!target.isHit) {
+                        // 绘制词语背景
+                        this.ctx.fillStyle = '#93c5fd';
+                        this.ctx.fillRect(target.x, target.y, WORD_WIDTH, WORD_HEIGHT);
+                        
+                        // 绘制词语边框
+                        this.ctx.strokeStyle = '#2563eb';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.strokeRect(target.x, target.y, WORD_WIDTH, WORD_HEIGHT);
+                        
+                        // 绘制词语文本
+                        this.ctx.fillStyle = 'black';
+                        this.ctx.font = '14px Arial';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.fillText(target.word, target.x + WORD_WIDTH/2, target.y + WORD_HEIGHT/2 + 5);
+                    }
+                });
+
+                // 绘制小鸟
+                this.ctx.fillStyle = '#E73E33';
+                this.ctx.beginPath();
+                this.ctx.arc(this.bird.x + BIRD_SIZE/2, this.bird.y + BIRD_SIZE/2, BIRD_SIZE/2, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // 绘制小鸟眼睛
+                this.ctx.fillStyle = 'white';
+                this.ctx.beginPath();
+                this.ctx.arc(this.bird.x + BIRD_SIZE/2 - 5, this.bird.y + BIRD_SIZE/2 - 2, 4, 0, Math.PI * 2);
+                this.ctx.arc(this.bird.x + BIRD_SIZE/2 + 5, this.bird.y + BIRD_SIZE/2 - 2, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.fillStyle = 'black';
+                this.ctx.beginPath();
+                this.ctx.arc(this.bird.x + BIRD_SIZE/2 - 5, this.bird.y + BIRD_SIZE/2 - 2, 2, 0, Math.PI * 2);
+                this.ctx.arc(this.bird.x + BIRD_SIZE/2 + 5, this.bird.y + BIRD_SIZE/2 - 2, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            updateStatus() {
+                document.getElementById('lives').textContent = `x ${this.lives}`;
+                document.getElementById('score').textContent = this.score;
+                document.getElementById('level').textContent = `关卡 ${this.level}`;
+            }
+
+            gameLoop = () => {
+                this.moveBird();
+                this.draw();
+                this.updateStatus();
+                requestAnimationFrame(this.gameLoop);
+            }
+        }
+
+        // 启动游戏
+        window.onload = () => new Game();
+    </script>
+</body>
+</html>
